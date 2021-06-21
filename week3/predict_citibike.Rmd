@@ -1,0 +1,417 @@
+---
+Created by: Karen D. Britt
+Created on: 06.17.21
+Last modified: 06.20.21
+Modified by: Karen D. Britt
+Project: Predicting Daily Citibike Trips
+---
+
+First we'll load packages our packages for making models and clear visualizations.
+
+```{r}
+library (readr)
+library(ggplot2)
+library(tidyverse)
+library(scales)
+library(modelr)
+
+theme_set(theme_bw())
+options(repr.plot.width=4, repr.plot.height=3)
+```
+
+Then we'll load a data frame of the number of total trips taken by Citibike riders for each day in 2014, along with the weather on each day.
+
+```{r}
+trips_per_day <- read_table2("Desktop/trips_per_day.csv")
+View(trips_per_day)
+```
+
+Now let's plot the number of trips taken as a function of the minimum temperature on each day.
+
+```{r}
+ggplot(trips_per_day, aes(x = tmin, y = num_trips)) +
+  geom_point() +
+  xlab('Minimum temperature') +
+  ylab('Daily trips') +
+  scale_y_continuous()
+```
+
+Now we'll try fitting different polynomials to this data, and use cross-validation to find the polynomial degree that generalizes best to held out data.
+
+First we'll shuffle the data and make an 80% train and 20% validation split.
+
+```{r}
+set.seed(42)
+
+num_days <- nrow(trips_per_day)
+frac_train <- 0.8
+num_train <- floor(num_days * frac_train)
+
+# randomly sample rows for the training set 
+ndx <- sample(1:num_days, num_train, replace=F)
+
+# used to fit the model
+trips_per_day_train <- trips_per_day[ndx, ]
+
+# used to evaluate the fit
+trips_per_day_validate <- trips_per_day[-ndx, ]
+```
+
+Now we'll evaluate models from degree 1 up through degree 8. For each we'll fit on the training data and evaluate on the validation data.
+
+```{r}
+# fit a model for each polynomial degree
+K <- 1:8
+train_err <- c()
+validate_err <- c()
+for (k in K) {
+  
+    # fit on the training data
+    model <- lm(num_trips ~ poly(tmin, k, raw = T), data=trips_per_day_train)
+    
+    # evaluate on the training data
+    train_err[k] <- sqrt(mean((predict(model, trips_per_day_train) - trips_per_day_train$num_trips)^2))
+
+    # evaluate on the validate data
+    validate_err[k] <- sqrt(mean((predict(model, trips_per_day_validate) - trips_per_day_validate$num_trips)^2))
+}
+```
+
+Now we'll plot the training and validation error as a function of the polynomial degree.
+
+```{r}
+plot_data <- data.frame(K, train_err, validate_err) %>%
+  gather("split", "error", -K)
+
+ggplot(plot_data, aes(x=K, y=error, color=split)) +
+  geom_line() +
+  scale_x_continuous(breaks=K) +
+  xlab('Polynomial Degree') +
+  ylab('RMSE')
+```
+
+Although the training error decreases as we increase the degree, the test error bottoms out at for a fifth degree polynomial.
+Let's re-fit this model on all of the data and plot the final result.
+
+```{r}
+model <- lm(num_trips ~ poly(tmin, 5, raw = T), data = trips_per_day_train)
+
+trips_per_day_train <- trips_per_day_train %>%
+  add_predictions(model) %>%
+  mutate(split = "train")
+trips_per_day_validate <- trips_per_day_validate %>%
+  add_predictions(model) %>%
+  mutate(split = "validate")
+plot_data <- bind_rows(trips_per_day_train, trips_per_day_validate)
+
+ggplot(plot_data, aes(x = tmin, y = num_trips)) +
+  geom_point(aes(color = split)) +
+  geom_line(aes(y = pred)) +
+  xlab('Minimum temperature') +
+  ylab('Daily trips') +
+  scale_y_continuous()
+```
+
+Now we will plot the number of trips taken as a function of the highest temperature on each day.
+
+```{r}
+ggplot(trips_per_day, aes(x = tmax, y = num_trips)) +
+  geom_point() +
+  xlab('Maximum Temperature') +
+  ylab('Daily trips') +
+  scale_y_continuous()
+```
+Now we'll try fitting different polynomials to this data, and use cross-validation to find the polynomial degree that generalizes best to held out data.
+
+First we'll shuffle the data and make an 80% train and 20% validation split.
+
+```{r}
+set.seed(42)
+
+num_days <- nrow(trips_per_day)
+frac_train <- 0.8
+num_train <- floor(num_days * frac_train)
+
+# randomly sample rows for the training set 
+ndx <- sample(1:num_days, num_train, replace=F)
+
+# used to fit the model
+trips_per_day_train <- trips_per_day[ndx, ]
+
+# used to evaluate the fit
+trips_per_day_validate <- trips_per_day[-ndx, ]
+```
+
+Now we'll evaluate models from degree 1 up through degree 8. For each we'll fit on the training data and evaluate on the validation data.
+
+```{r}
+# fit a model for each polynomial degree
+K <- 1:8
+train_err <- c()
+validate_err <- c()
+for (k in K) {
+  
+    # fit on the training data
+    model <- lm(num_trips ~ poly(tmax, k, raw = T), data=trips_per_day_train)
+    
+    # evaluate on the training data
+    train_err[k] <- sqrt(mean((predict(model, trips_per_day_train) - trips_per_day_train$num_trips)^2))
+
+    # evaluate on the validate data
+    validate_err[k] <- sqrt(mean((predict(model, trips_per_day_validate) - trips_per_day_validate$num_trips)^2))
+}
+```
+
+Now we'll plot the training and validation error as a function of the polynomial degree.
+
+```{r}
+plot_data <- data.frame(K, train_err, validate_err) %>%
+  gather("split", "error", -K)
+
+ggplot(plot_data, aes(x=K, y=error, color=split)) +
+  geom_line() +
+  scale_x_continuous(breaks=K) +
+  xlab('Polynomial Degree') +
+  ylab('RMSE')
+```
+
+The training error decreases as we increase the degree. The validation error seems to increase with each polynomial degree after dipping on 3.
+
+Let's re-fit this model on all of the data and plot the final result.
+
+```{r}
+model <- lm(num_trips ~ poly(tmax, 5, raw = T), data = trips_per_day_train)
+
+trips_per_day_train <- trips_per_day_train %>%
+  add_predictions(model) %>%
+  mutate(split = "train")
+trips_per_day_validate <- trips_per_day_validate %>%
+  add_predictions(model) %>%
+  mutate(split = "validate")
+plot_data <- bind_rows(trips_per_day_train, trips_per_day_validate)
+
+ggplot(plot_data, aes(x = tmax, y = num_trips)) +
+  geom_point(aes(color = split)) +
+  geom_line(aes(y = pred)) +
+  xlab('Maximum temperature') +
+  ylab('Daily trips') +
+  scale_y_continuous()
+```
+
+Now we will plot the number of trips taken as a function of the amount of snow on each day.
+
+```{r}
+ggplot(trips_per_day, aes(x = snow, y = num_trips)) +
+  geom_point() +
+  xlab('Snow Amount') +
+  ylab('Daily trips') +
+  scale_y_continuous()
+```
+Now we'll try fitting different polynomials to this data, and use cross-validation to find the polynomial degree that generalizes best to held out data.
+
+First we'll shuffle the data and make an 80% train and 20% validation split.
+
+```{r}
+set.seed(42)
+
+num_days <- nrow(trips_per_day)
+frac_train <- 0.8
+num_train <- floor(num_days * frac_train)
+
+# randomly sample rows for the training set 
+ndx <- sample(1:num_days, num_train, replace=F)
+
+# used to fit the model
+trips_per_day_train <- trips_per_day[ndx, ]
+
+# used to evaluate the fit
+trips_per_day_validate <- trips_per_day[-ndx, ]
+```
+
+Now we'll evaluate models from degree 1 up through degree 8. For each we'll fit on the training data and evaluate on the validation data.
+
+```{r}
+# fit a model for each polynomial degree
+K <- 1:8
+train_err <- c()
+validate_err <- c()
+for (k in K) {
+  
+    # fit on the training data
+    model <- lm(num_trips ~ poly(snow, k, raw = T), data=trips_per_day_train)
+    
+    # evaluate on the training data
+    train_err[k] <- sqrt(mean((predict(model, trips_per_day_train) - trips_per_day_train$num_trips)^2))
+
+    # evaluate on the validate data
+    validate_err[k] <- sqrt(mean((predict(model, trips_per_day_validate) - trips_per_day_validate$num_trips)^2))
+}
+```
+
+Now we'll plot the training and validation error as a function of the polynomial degree.
+
+```{r}
+plot_data <- data.frame(K, train_err, validate_err) %>%
+  gather("split", "error", -K)
+
+ggplot(plot_data, aes(x=K, y=error, color=split)) +
+  geom_line() +
+  scale_x_continuous(breaks=K) +
+  xlab('Polynomial Degree') +
+  ylab('RMSE')
+```
+
+The test error stays consistently at 0 while the validation error increases after 6.
+
+Let's re-fit this model on all of the data and plot the final result.
+
+```{r}
+model <- lm(num_trips ~ poly(snow, 5, raw = T), data = trips_per_day_train)
+
+trips_per_day_train <- trips_per_day_train %>%
+  add_predictions(model) %>%
+  mutate(split = "train")
+trips_per_day_validate <- trips_per_day_validate %>%
+  add_predictions(model) %>%
+  mutate(split = "validate")
+plot_data <- bind_rows(trips_per_day_train, trips_per_day_validate)
+
+ggplot(plot_data, aes(x = snow, y = num_trips)) +
+  geom_point(aes(color = split)) +
+  geom_line(aes(y = pred)) +
+  xlab('Snow') +
+  ylab('Daily trips') +
+  scale_y_continuous()
+```
+
+Now we will plot the number of trips taken as a function of the depth of snow on each day.
+
+```{r}
+ggplot(trips_per_day, aes(x = snwd, y = num_trips)) +
+  geom_point() +
+  xlab('Snow Depth') +
+  ylab('Daily trips') +
+  scale_y_continuous()
+```
+Now we'll try fitting different polynomials to this data, and use cross-validation to find the polynomial degree that generalizes best to held out data.
+
+First we'll shuffle the data and make an 80% train and 20% validation split.
+
+```{r}
+set.seed(42)
+
+num_days <- nrow(trips_per_day)
+frac_train <- 0.8
+num_train <- floor(num_days * frac_train)
+
+# randomly sample rows for the training set 
+ndx <- sample(1:num_days, num_train, replace=F)
+
+# used to fit the model
+trips_per_day_train <- trips_per_day[ndx, ]
+
+# used to evaluate the fit
+trips_per_day_validate <- trips_per_day[-ndx, ]
+```
+
+Now we'll evaluate models from degree 1 up through degree 8. For each we'll fit on the training data and evaluate on the validation data.
+
+```{r}
+# fit a model for each polynomial degree
+K <- 1:8
+train_err <- c()
+validate_err <- c()
+for (k in K) {
+  
+    # fit on the training data
+    model <- lm(num_trips ~ poly(snwd, k, raw = T), data=trips_per_day_train)
+    
+    # evaluate on the training data
+    train_err[k] <- sqrt(mean((predict(model, trips_per_day_train) - trips_per_day_train$num_trips)^2))
+
+    # evaluate on the validate data
+    validate_err[k] <- sqrt(mean((predict(model, trips_per_day_validate) - trips_per_day_validate$num_trips)^2))
+}
+```
+
+Now we'll plot the training and validation error as a function of the polynomial degree.
+
+```{r}
+plot_data <- data.frame(K, train_err, validate_err) %>%
+  gather("split", "error", -K)
+
+ggplot(plot_data, aes(x=K, y=error, color=split)) +
+  geom_line() +
+  scale_x_continuous(breaks=K) +
+  xlab('Polynomial Degree') +
+  ylab('RMSE')
+```
+
+The training error decreases with each polinomial degree and the valudation erro increases after six.
+
+Let's re-fit this model on all of the data and plot the final result.
+
+```{r}
+model <- lm(num_trips ~ poly(snwd, 5, raw = T), data = trips_per_day_train)
+
+trips_per_day_train <- trips_per_day_train %>%
+  add_predictions(model) %>%
+  mutate(split = "train")
+trips_per_day_validate <- trips_per_day_validate %>%
+  add_predictions(model) %>%
+  mutate(split = "validate")
+plot_data <- bind_rows(trips_per_day_train, trips_per_day_validate)
+
+ggplot(plot_data, aes(x = snwd, y = num_trips)) +
+  geom_point(aes(color = split)) +
+  geom_line(aes(y = pred)) +
+  xlab('Snow Depth') +
+  ylab('Daily trips') +
+  scale_y_continuous()
+```
+
+I have determined the number of trips taken as a function of the highest temperature on each day to have the best performance on the validation data. 
+
+Fist I will create a plot with the date on the x-axis and the number of trips on the y-axis, showing the actual values as points and predicted values as a line.
+
+```{r}
+
+model <- lm(num_trips ~ poly(tmax, 5, raw = T), data = trips_per_day_train)
+
+trips_per_day_train <- trips_per_day_train %>%
+  add_predictions(model) %>%
+  mutate(split = "train")
+trips_per_day_validate <- trips_per_day_validate %>%
+  add_predictions(model) %>%
+  mutate(split = "validate")
+plot_data <- bind_rows(trips_per_day_train, trips_per_day_validate)
+
+ggplot(plot_data, aes(x = date, y = num_trips)) +
+  geom_point(aes(color = num_trips)) +
+  geom_line(aes(y = pred)) +
+  xlab('Date') +
+  ylab('Number of Trips') +
+  scale_y_continuous()
+```
+
+Now we will create a plot where the x-axis is the predicted value and the y-axis is the actual value, with each point representing one day.
+
+```{r}
+model <- lm(num_trips ~ poly(tmax, 5, raw = T), data = trips_per_day_train)
+
+trips_per_day_train <- trips_per_day_train %>%
+  add_predictions(model) %>%
+  mutate(split = "train")
+trips_per_day_validate <- trips_per_day_validate %>%
+  add_predictions(model) %>%
+  mutate(split = "validate")
+plot_data <- bind_rows(trips_per_day_train, trips_per_day_validate)
+
+ggplot(plot_data, aes(x = pred, y = num_trips)) +
+  geom_point(aes(color = date)) +
+  ggtitle('Predicted Values by the Number of Trips') +
+  xlab('Prediction') +
+  ylab('Number of Trips') +
+  scale_y_continuous()
+```
+
